@@ -538,7 +538,7 @@ int wait_and_forward_signal(sigset_t const* const parent_sigset_ptr, pid_t const
 	return 0;
 }
 
-int reap_zombies(const pid_t child_pid, int* const child_exitcode_ptr) {
+int reap_zombies(const pid_t child_pid, int* const child_exitcode_ptr, bool* const children_exist_ptr) {
 	pid_t current_pid;
 	int current_status;
 
@@ -550,6 +550,7 @@ int reap_zombies(const pid_t child_pid, int* const child_exitcode_ptr) {
 			case -1:
 				if (errno == ECHILD) {
 					PRINT_TRACE("No child to wait");
+					*children_exist_ptr = false;
 					break;
 				}
 				PRINT_FATAL("Error while waiting for pids: '%s'", strerror(errno));
@@ -557,6 +558,7 @@ int reap_zombies(const pid_t child_pid, int* const child_exitcode_ptr) {
 
 			case 0:
 				PRINT_TRACE("No child to reap");
+				*children_exist_ptr = true;
 				break;
 
 			default:
@@ -610,6 +612,7 @@ int main(int argc, char *argv[]) {
 	// Those are passed to functions to get an exitcode back.
 	int child_exitcode = -1;  // This isn't a valid exitcode, and lets us tell whether the child has exited.
 	int parse_exitcode = 1;   // By default, we exit with 1 if parsing fails.
+	bool children_exist = true;
 
 	/* Parse command line arguments */
 	char* (*child_args_ptr)[];
@@ -669,13 +672,15 @@ int main(int argc, char *argv[]) {
 		}
 
 		/* Now, reap zombies */
-		if (reap_zombies(child_pid, &child_exitcode)) {
+		if (reap_zombies(child_pid, &child_exitcode, &children_exist)) {
 			return 1;
 		}
 
-		if (child_exitcode != -1) {
+		if (!children_exist && child_exitcode != -1) {
 			PRINT_TRACE("Exiting: child has exited");
 			return child_exitcode;
+		} else {
+			PRINT_INFO("Waiting on orphaned processes to exit");
 		}
 	}
 }
